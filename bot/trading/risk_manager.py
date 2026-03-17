@@ -1,6 +1,7 @@
 """Risk management module — controls position sizing, drawdown protection, and exposure."""
 
 import logging
+import time
 from dataclasses import dataclass, field
 from bot.config import Config
 from bot.analysis.strategy import TradeSignal
@@ -31,6 +32,8 @@ class RiskManager:
         self.trade_history: list[dict] = []
         self.total_trades = 0
         self.winning_trades = 0
+        self._cooldowns: dict[str, float] = {}  # symbol -> timestamp when cooldown expires
+        self.COOLDOWN_SECONDS = 3 * 3600  # 3 hours cooldown after stop-loss
 
     @property
     def open_positions(self) -> list[Position]:
@@ -83,11 +86,26 @@ class RiskManager:
         size = position_usdt / signal.entry_price
         return size
 
+    def is_on_cooldown(self, symbol: str) -> bool:
+        """Check if a symbol is on cooldown after a recent stop-loss."""
+        if symbol not in self._cooldowns:
+            return False
+        if time.time() >= self._cooldowns[symbol]:
+            del self._cooldowns[symbol]
+            return False
+        remaining = (self._cooldowns[symbol] - time.time()) / 60
+        logger.info(f"{symbol} on cooldown for {remaining:.0f} more minutes")
+        return True
+
     def create_position(self, signal: TradeSignal) -> Position | None:
         """Create a new position from a trade signal.
 
         Returns None if signal has invalid SL/TP values.
         """
+        # Check cooldown
+        if self.is_on_cooldown(signal.symbol):
+            return None
+
         # Validate stop loss is on the correct side of entry
         if signal.direction == "long" and signal.stop_loss >= signal.entry_price:
             logger.warning(f"Rejected {signal.symbol}: SL={signal.stop_loss:.4f} >= entry={signal.entry_price:.4f} for LONG")
@@ -107,15 +125,30 @@ class RiskManager:
         else:
             default_tp = signal.entry_price * 0.90
 
+        # Max allowed TP distance: 50% per 1x leverage (scales with leverage)
+        max_tp_distance_pct = 0.50 * signal.leverage
+
         tp = default_tp
         if signal.take_profit_zones:
             best_cluster = signal.take_profit_zones[0]
             candidate_tp = best_cluster.center_price
-            # Validate TP is on correct side of entry
+            tp_distance_pct = abs(candidate_tp - signal.entry_price) / signal.entry_price
+
+            # Validate TP is on correct side of entry and within reasonable range
             if signal.direction == "long" and candidate_tp > signal.entry_price:
-                tp = candidate_tp
+                if tp_distance_pct > max_tp_distance_pct:
+                    logger.warning(f"{signal.symbol}: TP={candidate_tp:.4f} too far from entry "
+                                 f"({tp_distance_pct:.0%}), capping to {max_tp_distance_pct:.0%}")
+                    tp = signal.entry_price * (1 + max_tp_distance_pct)
+                else:
+                    tp = candidate_tp
             elif signal.direction == "short" and candidate_tp < signal.entry_price:
-                tp = candidate_tp
+                if tp_distance_pct > max_tp_distance_pct:
+                    logger.warning(f"{signal.symbol}: TP={candidate_tp:.4f} too far from entry "
+                                 f"({tp_distance_pct:.0%}), capping to {max_tp_distance_pct:.0%}")
+                    tp = signal.entry_price * (1 - max_tp_distance_pct)
+                else:
+                    tp = candidate_tp
             else:
                 logger.warning(f"{signal.symbol}: TP={candidate_tp:.4f} on wrong side of entry={signal.entry_price:.4f} "
                              f"for {signal.direction}, using default TP={default_tp:.4f}")
@@ -185,6 +218,11 @@ class RiskManager:
         position.status = "closed"
         self.current_balance += pnl_usdt
         self.total_trades += 1
+
+        # Set cooldown if closed by stop-loss or trailing stop
+        if reason in ("stop_loss", "trailing_stop"):
+            self._cooldowns[position.symbol] = time.time() + self.COOLDOWN_SECONDS
+            logger.info(f"{position.symbol} on cooldown for {self.COOLDOWN_SECONDS // 3600}h after {reason}")
 
         if pnl_usdt > 0:
             self.winning_trades += 1

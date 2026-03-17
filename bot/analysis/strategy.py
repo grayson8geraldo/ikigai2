@@ -177,9 +177,13 @@ class StrategyAnalyzer:
             entry = best_triangle.breakout_level
             direction = "long"
 
-            # If price already above breakout, enter at market
-            if current_price > entry:
+            # Only enter if price has actually broken out above the level
+            if current_price >= entry:
                 entry = current_price
+            else:
+                # Breakout hasn't happened yet — skip signal
+                logger.info(f"[{symbol}] Price {current_price:.4f} below breakout {entry:.4f} — waiting")
+                return None
 
             # SL must be BELOW entry for a long — use lowest point of wave E or triangle
             wave_e_price = best_triangle.wave_e.price
@@ -188,8 +192,13 @@ class StrategyAnalyzer:
         else:
             entry = best_triangle.breakout_level
             direction = "short"
-            if current_price < entry:
+
+            # Only enter if price has actually broken down below the level
+            if current_price <= entry:
                 entry = current_price
+            else:
+                logger.info(f"[{symbol}] Price {current_price:.4f} above breakout {entry:.4f} — waiting")
+                return None
 
             # SL must be ABOVE entry for a short
             wave_e_price = best_triangle.wave_e.price
