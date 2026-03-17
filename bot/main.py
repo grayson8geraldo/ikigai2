@@ -175,14 +175,16 @@ class ElliottWaveBot:
                 # 5. Wait for next cycle
                 logger.info(f"Sleeping {interval_minutes} minutes...")
                 time.sleep(interval_minutes * 60)
+                logger.info(f"Waking up for cycle {cycle + 1}...")
 
             except KeyboardInterrupt:
                 logger.info("Bot stopped by user")
                 self.executor.close_all_positions("manual_stop")
                 break
             except Exception as e:
-                logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
-                time.sleep(60)  # Brief pause before retrying
+                logger.error(f"Unexpected error in cycle {cycle}: {e}", exc_info=True)
+                logger.info("Retrying in 60 seconds...")
+                time.sleep(60)
 
 
 def main():

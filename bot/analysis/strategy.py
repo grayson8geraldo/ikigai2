@@ -154,7 +154,8 @@ class StrategyAnalyzer:
         # Calculate targets
         if matching_impulse:
             target_clusters = calculate_all_targets(
-                matching_impulse, best_triangle, self.config.CLUSTER_TOLERANCE
+                matching_impulse, best_triangle, self.config.CLUSTER_TOLERANCE,
+                entry_price=current_price,
             )
         else:
             # Use triangle target alone
@@ -174,18 +175,26 @@ class StrategyAnalyzer:
         # Entry and stop loss
         if best_triangle.breakout_direction == "up":
             entry = best_triangle.breakout_level
-            stop_loss = best_triangle.wave_e.price * 0.98  # Below wave E
             direction = "long"
 
             # If price already above breakout, enter at market
             if current_price > entry:
                 entry = current_price
+
+            # SL must be BELOW entry for a long — use lowest point of wave E or triangle
+            wave_e_price = best_triangle.wave_e.price
+            sl_candidate = min(wave_e_price, entry) * 0.98
+            stop_loss = sl_candidate
         else:
             entry = best_triangle.breakout_level
-            stop_loss = best_triangle.wave_e.price * 1.02
             direction = "short"
             if current_price < entry:
                 entry = current_price
+
+            # SL must be ABOVE entry for a short
+            wave_e_price = best_triangle.wave_e.price
+            sl_candidate = max(wave_e_price, entry) * 1.02
+            stop_loss = sl_candidate
 
         # Leverage based on risk
         risk_pct = abs(entry - stop_loss) / entry

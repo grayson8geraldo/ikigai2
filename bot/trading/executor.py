@@ -39,6 +39,8 @@ class TradeExecutor:
             return None
 
         position = self.risk.create_position(signal)
+        if position is None:
+            return None
 
         if self.paper_mode:
             logger.info(f"[PAPER] Opened {signal.direction} {signal.symbol} "

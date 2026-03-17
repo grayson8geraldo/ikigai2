@@ -244,8 +244,13 @@ def find_target_clusters(all_targets: list[TargetLevel],
 
 def calculate_all_targets(impulse: ImpulseWave,
                            triangle_pattern: Triangle = None,
-                           tolerance_pct: float = 0.015) -> list[TargetCluster]:
-    """Master function: calculate all targets and find convergence clusters."""
+                           tolerance_pct: float = 0.015,
+                           entry_price: float = 0.0) -> list[TargetCluster]:
+    """Master function: calculate all targets and find convergence clusters.
+
+    Args:
+        entry_price: Actual trade entry price for filtering. If 0, falls back to wave4_end.
+    """
     all_targets = []
 
     # 1. Fibonacci extension targets (arithmetic)
@@ -253,9 +258,9 @@ def calculate_all_targets(impulse: ImpulseWave,
     all_targets.extend(fib_targets)
 
     # 2. Log-scale Fibonacci (if arithmetic targets are too far)
-    current_price = impulse.wave4_end.price
-    arith_max = max(t.price for t in fib_targets) if fib_targets else current_price
-    if impulse.direction == "up" and arith_max > current_price * 3:
+    ref_price = entry_price if entry_price > 0 else impulse.wave4_end.price
+    arith_max = max(t.price for t in fib_targets) if fib_targets else ref_price
+    if impulse.direction == "up" and arith_max > ref_price * 3:
         # Arithmetic targets look extreme — add log scale
         log_targets = fibonacci_log_targets(impulse)
         all_targets.extend(log_targets)
@@ -269,10 +274,10 @@ def calculate_all_targets(impulse: ImpulseWave,
     channel_targets = parallel_channel_target(impulse)
     all_targets.extend(channel_targets)
 
-    # Filter unreasonable targets
+    # Filter targets that are on the wrong side of entry price
     if impulse.direction == "up":
-        all_targets = [t for t in all_targets if t.price > current_price]
+        all_targets = [t for t in all_targets if t.price > ref_price]
     else:
-        all_targets = [t for t in all_targets if t.price < current_price]
+        all_targets = [t for t in all_targets if t.price < ref_price]
 
     return find_target_clusters(all_targets, tolerance_pct)

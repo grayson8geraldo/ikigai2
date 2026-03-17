@@ -18,6 +18,7 @@ class DataFetcher:
             "apiKey": config.API_KEY,
             "secret": config.API_SECRET,
             "enableRateLimit": True,
+            "timeout": 30000,  # 30 second timeout for all API calls
             "options": {"defaultType": "swap"},
         })
         if config.MODE == "paper":

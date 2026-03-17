@@ -83,15 +83,42 @@ class RiskManager:
         size = position_usdt / signal.entry_price
         return size
 
-    def create_position(self, signal: TradeSignal) -> Position:
-        """Create a new position from a trade signal."""
+    def create_position(self, signal: TradeSignal) -> Position | None:
+        """Create a new position from a trade signal.
+
+        Returns None if signal has invalid SL/TP values.
+        """
+        # Validate stop loss is on the correct side of entry
+        if signal.direction == "long" and signal.stop_loss >= signal.entry_price:
+            logger.warning(f"Rejected {signal.symbol}: SL={signal.stop_loss:.4f} >= entry={signal.entry_price:.4f} for LONG")
+            return None
+        if signal.direction == "short" and signal.stop_loss <= signal.entry_price:
+            logger.warning(f"Rejected {signal.symbol}: SL={signal.stop_loss:.4f} <= entry={signal.entry_price:.4f} for SHORT")
+            return None
+
         size = self.calculate_position_size(signal)
+        if size <= 0:
+            logger.warning(f"Rejected {signal.symbol}: calculated size={size:.6f}")
+            return None
 
         # Best take-profit target (highest confidence cluster)
-        tp = signal.entry_price * 1.10  # default 10%
+        if signal.direction == "long":
+            default_tp = signal.entry_price * 1.10
+        else:
+            default_tp = signal.entry_price * 0.90
+
+        tp = default_tp
         if signal.take_profit_zones:
             best_cluster = signal.take_profit_zones[0]
-            tp = best_cluster.center_price
+            candidate_tp = best_cluster.center_price
+            # Validate TP is on correct side of entry
+            if signal.direction == "long" and candidate_tp > signal.entry_price:
+                tp = candidate_tp
+            elif signal.direction == "short" and candidate_tp < signal.entry_price:
+                tp = candidate_tp
+            else:
+                logger.warning(f"{signal.symbol}: TP={candidate_tp:.4f} on wrong side of entry={signal.entry_price:.4f} "
+                             f"for {signal.direction}, using default TP={default_tp:.4f}")
 
         # Trailing stop
         trailing = signal.entry_price * (1 - self.config.TRAILING_STOP_PCT) if signal.direction == "long" \
