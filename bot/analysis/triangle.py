@@ -127,8 +127,8 @@ def detect_triangles(pivots: list[Pivot], direction: str = "up",
             else:
                 apex_idx = a.index + (a.price - b.price) / denom
 
-        # Confidence scoring
-        confidence = 0.5
+        # Confidence scoring — conservative base
+        confidence = 0.3
 
         # Better if each successive swing is smaller (true contraction)
         ab = abs(b.price - a.price)
@@ -136,9 +136,9 @@ def detect_triangles(pivots: list[Pivot], direction: str = "up",
         cd = abs(d.price - c.price)
         de = abs(e.price - d.price)
         if ab > bc > cd > de:
-            confidence += 0.25
-        elif ab > bc and cd > de:
             confidence += 0.15
+        elif ab > bc and cd > de:
+            confidence += 0.1
 
         # Better if roughly symmetric timing
         time_ab = b.index - a.index
@@ -148,7 +148,7 @@ def detect_triangles(pivots: list[Pivot], direction: str = "up",
         avg_time = (time_ab + time_bc + time_cd + time_de) / 4
         time_variance = np.var([time_ab, time_bc, time_cd, time_de])
         if avg_time > 0 and time_variance / (avg_time ** 2) < 0.5:
-            confidence += 0.1
+            confidence += 0.05
 
         triangles.append(Triangle(
             wave_a=a, wave_b=b, wave_c=c, wave_d=d, wave_e=e,

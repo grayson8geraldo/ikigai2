@@ -113,7 +113,7 @@ def detect_diagonals(pivots: list[Pivot], direction: str = "up") -> list[Diagona
         if not overlaps:
             continue
 
-        confidence = 0.4
+        confidence = 0.25
 
         # Determine type
         # Leading diagonal: wave 3 ≈ 62% of wave 1
@@ -124,18 +124,18 @@ def detect_diagonals(pivots: list[Pivot], direction: str = "up") -> list[Diagona
         is_ending = False
 
         if 0.5 <= w3_to_w1 <= 0.786:
-            confidence += 0.15
+            confidence += 0.1
             is_leading = True
         if 0.5 <= w4_to_w2 <= 0.786:
-            confidence += 0.1
+            confidence += 0.05
             is_leading = True
 
         if converging:
-            confidence += 0.2
+            confidence += 0.15
             is_ending = True  # ending diagonals are more strongly converging
 
         if direction == "up" and highs_rising and lows_rising:
-            confidence += 0.1
+            confidence += 0.05
 
         # Ending diagonals have all waves overlapping
         if direction == "up":
@@ -144,7 +144,7 @@ def detect_diagonals(pivots: list[Pivot], direction: str = "up") -> list[Diagona
             all_overlap = (p4.price > p1.price and p2.price > p3.price)
 
         if all_overlap:
-            confidence += 0.1
+            confidence += 0.05
             is_ending = True
 
         diag_type = "ending" if is_ending and not is_leading else "leading"

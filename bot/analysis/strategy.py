@@ -58,23 +58,37 @@ class StrategyAnalyzer:
         if df.empty or len(df) < 50:
             return analysis
 
-        # Step 0: Find pivots
-        window = self.config.FRACTAL_WINDOW
-        min_swing = 0.02 if timeframe in ("1d", "1w") else 0.015
+        # Step 0: Find pivots — scale window by timeframe to reduce noise
+        window_by_tf = {"1w": 12, "1d": 10, "4h": 7, "1h": 5}
+        window = window_by_tf.get(timeframe, self.config.FRACTAL_WINDOW)
+        min_swing = 0.03 if timeframe in ("1d", "1w") else 0.02
         pivots = find_significant_pivots(df, window=window, min_change_pct=min_swing)
         analysis.pivots = pivots
 
         if len(pivots) < 6:
             return analysis
 
-        # Step 1: Search for triangles (primary trigger)
-        triangles_up = detect_triangles(pivots, direction="up", tolerance=self.config.TRIANGLE_TOLERANCE)
-        triangles_down = detect_triangles(pivots, direction="down", tolerance=self.config.TRIANGLE_TOLERANCE)
+        # Filter to only recent pivots — patterns from months ago are stale
+        max_bars = len(df)
+        recency_bars = {"1w": 30, "1d": 25, "4h": 40, "1h": 60}
+        min_bar_idx = max_bars - recency_bars.get(timeframe, 30)
+        recent_pivots = [p for p in pivots if p.index >= min_bar_idx]
+
+        # Need at least 5 recent pivots for patterns — fall back to last N pivots
+        if len(recent_pivots) < 6:
+            recent_pivots = pivots[-8:] if len(pivots) >= 8 else pivots[-6:]
+
+        # Step 1: Search for triangles (primary trigger) — use recent pivots only
+        triangles_up = detect_triangles(recent_pivots, direction="up", tolerance=self.config.TRIANGLE_TOLERANCE)
+        triangles_down = detect_triangles(recent_pivots, direction="down", tolerance=self.config.TRIANGLE_TOLERANCE)
         analysis.triangles = triangles_up + triangles_down
 
-        # Step 2: Search for impulse waves
+        # Step 2: Search for impulse waves — use all pivots for context but validate recency
         impulses_up = find_impulse_waves(pivots, direction="up")
         impulses_down = find_impulse_waves(pivots, direction="down")
+        # Only keep impulses where wave4_end is recent
+        impulses_up = [w for w in impulses_up if w.wave4_end.index >= min_bar_idx]
+        impulses_down = [w for w in impulses_down if w.wave4_end.index >= min_bar_idx]
         analysis.impulse_waves = impulses_up + impulses_down
 
         # Step 3: Search for zigzag corrections
@@ -82,9 +96,9 @@ class StrategyAnalyzer:
         zigzags_up = detect_zigzag(pivots, direction="up")
         analysis.zigzags = zigzags_down + zigzags_up
 
-        # Step 4: Search for diagonals
-        diags_up = detect_diagonals(pivots, direction="up")
-        diags_down = detect_diagonals(pivots, direction="down")
+        # Step 4: Search for diagonals — use recent pivots only
+        diags_up = detect_diagonals(recent_pivots, direction="up")
+        diags_down = detect_diagonals(recent_pivots, direction="down")
         analysis.diagonals = diags_up + diags_down
 
         # Step 5: Generate trade signal
@@ -212,9 +226,9 @@ class StrategyAnalyzer:
 
         confidence = best_triangle.confidence
         if has_alternation:
-            confidence = min(confidence + 0.15, 1.0)
+            confidence = min(confidence + 0.1, 0.85)
         if matching_impulse:
-            confidence = min(confidence + 0.1, 1.0)
+            confidence = min(confidence + 0.05, 0.85)
 
         wave_ctx = "Wave 4 Triangle detected"
         if matching_impulse:
@@ -252,23 +266,23 @@ class StrategyAnalyzer:
             stop_loss = diag.waves[0].price * 0.97
             direction = "long"
 
-            # Target: wave 3 of the larger impulse (typically 1.618x wave 1)
+            # Target: conservative 61.8% extension of diagonal height
             diag_height = diag.waves[5].price - diag.waves[0].price
-            tp_price = diag.waves[5].price + diag_height * 1.618
+            tp_price = diag.waves[5].price + diag_height * 0.618
 
             from bot.analysis.targets import TargetLevel
             targets = [TargetLevel(price=tp_price, method="fibonacci",
-                                    description="W3 target (1.618x diagonal)", strength=0.7)]
+                                    description="W3 target (0.618x diagonal)", strength=0.6)]
             target_clusters = find_target_clusters(targets, self.config.CLUSTER_TOLERANCE)
         else:
             entry = current_price
             stop_loss = diag.waves[0].price * 1.03
             direction = "short"
             diag_height = diag.waves[0].price - diag.waves[5].price
-            tp_price = diag.waves[5].price - diag_height * 1.618
+            tp_price = diag.waves[5].price - diag_height * 0.618
             from bot.analysis.targets import TargetLevel
             targets = [TargetLevel(price=tp_price, method="fibonacci",
-                                    description="W3 target (1.618x diagonal)", strength=0.7)]
+                                    description="W3 target (0.618x diagonal)", strength=0.6)]
             target_clusters = find_target_clusters(targets, self.config.CLUSTER_TOLERANCE)
 
         risk_pct = abs(entry - stop_loss) / entry

@@ -34,7 +34,7 @@ class TradeExecutor:
                 return None
 
         # Minimum confidence threshold
-        if signal.confidence < 0.5:
+        if signal.confidence < 0.55:
             logger.info(f"Signal confidence too low: {signal.confidence:.0%}")
             return None
 

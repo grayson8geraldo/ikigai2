@@ -148,11 +148,16 @@ class ElliottWaveBot:
                     self.executor.close_all_positions("target_reached")
                     break
 
-                # Check max drawdown
+                # Check max drawdown — pause trading for 6 hours instead of stopping
                 if self.risk.drawdown_pct >= self.config.MAX_DRAWDOWN_PCT:
-                    logger.warning("MAX DRAWDOWN — stopping bot")
+                    logger.warning(f"MAX DRAWDOWN {self.risk.drawdown_pct:.1%} — closing positions and pausing 6h")
                     self.executor.close_all_positions("max_drawdown")
-                    break
+                    # Reset peak to current balance so drawdown resets
+                    self.risk.peak_balance = self.risk.current_balance
+                    logger.info(f"Peak balance reset to ${self.risk.current_balance:.2f}")
+                    time.sleep(6 * 3600)  # Pause 6 hours
+                    logger.info("Resuming after drawdown pause...")
+                    continue
 
                 # 1. Manage existing positions
                 if self.risk.open_positions:

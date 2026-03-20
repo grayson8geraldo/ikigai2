@@ -97,16 +97,15 @@ def validate_impulse_rules(pivots: list[Pivot], direction: str = "up") -> tuple[
 
             # Wave 5 must make new high above wave 3
             if p5.price <= p3.price:
-                # Truncated 5th — lower confidence but still possible
-                confidence = 0.3
+                # Truncated 5th — low confidence
+                confidence = 0.15
             else:
-                confidence = 0.7
+                confidence = 0.4
         else:
             # Only 5 pivots — wave 5 not yet complete
-            # Check wave 3 is not shorter than wave 1 (preliminary)
             if w3 < w1 * 0.5:
                 return False, 0.0
-            confidence = 0.5
+            confidence = 0.25
 
     else:  # direction == "down"
         w1 = p0.price - p1.price
@@ -126,25 +125,25 @@ def validate_impulse_rules(pivots: list[Pivot], direction: str = "up") -> tuple[
             if w3 == min(lengths):
                 return False, 0.0
             if p5.price >= p3.price:
-                confidence = 0.3
+                confidence = 0.15
             else:
-                confidence = 0.7
+                confidence = 0.4
         else:
             if w3 < w1 * 0.5:
                 return False, 0.0
-            confidence = 0.5
+            confidence = 0.25
 
     # Bonus confidence: wave 3 is the longest (most common)
     if len(pivots) >= 6:
         if w3 == max(lengths):
-            confidence += 0.15
+            confidence += 0.1
 
     # Bonus: wave 2 retraces 50-78.6% of wave 1 (ideal)
     w2_retrace = w2 / w1 if w1 != 0 else 0
     if 0.38 <= w2_retrace <= 0.786:
-        confidence += 0.1
+        confidence += 0.05
 
-    return True, min(confidence, 1.0)
+    return True, min(confidence, 0.75)
 
 
 def find_impulse_waves(pivots: list[Pivot], direction: str = "up") -> list[ImpulseWave]:
